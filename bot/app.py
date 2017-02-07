@@ -9,28 +9,9 @@ from config import config, lang
 app = Flask(__name__)
 
 bot = telebot.TeleBot(config['telegram_token'])
-bot.remove_webhook()
-bot.set_webhook(url=config['heroku_url'] + '/callback/updates/tg')
+# bot.remove_webhook()
 
 TG_DOC_MAXSIZE = 52428800
-last_update_id = 0
-
-@bot.message_handler(commands=['start'])
-def on_start(message):
-    bot.send_message(message.chat.id, lang[chat['lang']]['start_message'])
-
-@app.route('/callback/updates/tg', methods=['POST'])
-def getTGUpdates():
-    global last_update_id
-    message = request.stream.read().decode('utf-8')
-    message_json = request.get_json()
-
-    if message_json['update_id'] > last_update_id:
-        bot.process_new_updates([telebot.types.Update.de_json(message)])
-        last_update_id = message_json['update_id']
-        return 'ok', 200
-
-    return '!', 200
 
 @app.route('/callback/updates/vk', methods=['POST'])
 def getVKUpdates():
