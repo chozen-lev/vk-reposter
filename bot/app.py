@@ -36,7 +36,7 @@ def getTGUpdates():
 
     return '!', 200
 
-@app.route('/callback-vk', methods=['POST'])
+@app.route('/updates/vk', methods=['POST'])
 def getVKUpdates():
     message_json = request.get_json()
 
