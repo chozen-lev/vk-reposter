@@ -5,15 +5,38 @@ import io
 import os
 from threading import Thread
 from config import config, lang
+import unidecode
 
 app = Flask(__name__)
 
 bot = telebot.TeleBot(config['telegram_token'])
-# bot.remove_webhook()
+bot.remove_webhook()
+bot.set_webhook(url=config['heroku_url'] + '/updates/tg')
 
 TG_DOC_MAXSIZE = 52428800
+last_update_id = 0
 
-@app.route('/callback/updates/vk', methods=['POST'])
+@bot.message_handler(commands=['list'])
+def get_list(message):
+    list = ''
+    for group in config['groups']:
+        if message.chat.id in config['groups'][group]['chats']:
+            list += '\n- [' + config['groups'][group]['name'] + '](https://vk.com/club' + str(group) + ')'
+    bot.send_message(message.chat.id, list, parse_mode = 'markdown')
+
+@app.route('/updates/tg', methods=['POST'])
+def getTGUpdates():
+    global last_update_id
+    message_json = request.get_json()
+
+    if message_json['update_id'] > last_update_id:
+        bot.process_new_updates([telebot.types.Update.de_json(message_json)])
+        last_update_id = message_json['update_id']
+        return 'ok', 200
+
+    return '!', 200
+
+@app.route('/callback-vk', methods=['POST'])
 def getVKUpdates():
     message_json = request.get_json()
 
@@ -29,15 +52,15 @@ def getVKUpdates():
 def VKUpdates_handler(message_json):
     if message_json['type'] == 'wall_post_new':
         for chat in config['groups'][message_json['group_id']]['chats']:
-            bot.send_message(chat['tg_chat_id'], lang[chat['lang']]['wall_post_new'].format('(https://vk.com/club' + str(message_json['group_id']) + '?w=wall-' + str(message_json['group_id']) + '_' + str(message_json['object']['id']) + ')'), parse_mode = 'markdown')
+            bot.send_message(chat, lang[config['groups'][message_json['group_id']]['chats'][chat]['lang']]['wall_post_new'].format(config['groups'][message_json['group_id']]['name'], '(https://vk.com/club' + str(message_json['group_id']) + '?w=wall-' + str(message_json['group_id']) + '_' + str(message_json['object']['id']) + ')'), parse_mode = 'markdown')
             
             if message_json['object']['text']:
-                bot.send_message(chat['tg_chat_id'], message_json['object']['text'], disable_notification=True)
+                bot.send_message(chat, message_json['object']['text'], disable_notification=True)
 
             if 'attachments' in message_json['object']:
                 for attachment in message_json['object']['attachments']:
                     if attachment['type'] == 'photo':
-                        bot.send_chat_action(chat['tg_chat_id'], 'upload_photo')
+                        bot.send_chat_action(chat, 'upload_photo')
 
                         url = attachment['photo']['photo_75']
                         if 'photo_2560' in attachment['photo']:
@@ -51,15 +74,15 @@ def VKUpdates_handler(message_json):
                         elif 'photo_130' in attachment['photo']:
                             url = attachment['photo']['photo_130']
 
-                        bot.send_photo(chat['tg_chat_id'], url, disable_notification=True)
+                        bot.send_photo(chat, url, disable_notification=True)
                     elif attachment['type'] == 'doc':
-                        bot.send_chat_action(chat['tg_chat_id'], 'upload_document')
+                        bot.send_chat_action(chat, 'upload_document')
                         if attachment['doc']['size'] < TG_DOC_MAXSIZE:
                             data = requests.get(attachment['doc']['url']).content
                             thing = io.BytesIO(data)
-                            thing.name = attachment['doc']['title']
-
-                            bot.send_document(chat['tg_chat_id'], thing, disable_notification=True)
+                            thing.name = unidecode.unidecode(attachment['doc']['title'])
+                            
+                            bot.send_document(chat, thing, disable_notification=True)
                         else:
                             size = attachment['doc']['size']
 
@@ -73,12 +96,12 @@ def VKUpdates_handler(message_json):
                             else:
                                 size = ' (%d B)' % size
 
-                            bot.send_message(chat['tg_chat_id'], '[' + attachment['doc']['title'] + '](' + attachment['doc']['url'] + ')' + size, parse_mode = 'markdown', disable_web_page_preview=True, disable_notification=True)
+                            bot.send_message(chat, '[' + attachment['doc']['title'] + '](' + attachment['doc']['url'] + ')' + size, parse_mode = 'markdown', disable_web_page_preview=True, disable_notification=True)
                     elif attachment['type'] == 'audio':
-                        bot.send_chat_action(chat['tg_chat_id'], 'upload_audio')
-                        bot.send_audio(chat['tg_chat_id'], attachment['audio']['url'], disable_notification=True)
+                        bot.send_chat_action(chat, 'upload_audio')
+                        bot.send_audio(chat, attachment['audio']['url'], disable_notification=True)
                     elif attachment['type'] == 'video':
-                        bot.send_message(chat['tg_chat_id'], '[' + attachment['video']['title'] + '](https://vk.com/video' + str(attachment['video']['owner_id']) + '_' + str(attachment['video']['id']) + ')', parse_mode = 'markdown', disable_notification=True)
+                        bot.send_message(chat, '[' + attachment['video']['title'] + '](https://vk.com/video' + str(attachment['video']['owner_id']) + '_' + str(attachment['video']['id']) + ')', parse_mode = 'markdown', disable_notification=True)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=os.environ.get('PORT', 5000))
